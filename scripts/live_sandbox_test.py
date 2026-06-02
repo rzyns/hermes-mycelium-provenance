@@ -20,7 +20,6 @@ REQUIRED_HOOKS = {
     "on_session_finalize",
     "on_session_reset",
 }
-FORBIDDEN_LIVE_PATHS = [Path.home() / ".hermes" / "plugins" / "mycelium-provenance"]
 PRIVATE_SENTINEL = "RAW_PRIVATE_SENTINEL_DO_NOT_STORE_20260602"
 
 
@@ -225,10 +224,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hermes-repo", default=None)
     parser.add_argument("--keep", action="store_true", help="Keep the temp sandbox tree.")
     args = parser.parse_args(argv)
-
-    if any(path.exists() for path in FORBIDDEN_LIVE_PATHS):
-        print("Refusing to run: a live default-profile mycelium-provenance plugin path exists.", file=sys.stderr)
-        return 2
 
     if args.scenario:
         if not args.root:

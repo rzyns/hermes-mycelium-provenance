@@ -4,7 +4,8 @@ import json
 import subprocess
 from pathlib import Path
 
-from hermes_mycelium_provenance.config import Config
+from hermes_mycelium_provenance import config as hmp_config
+from hermes_mycelium_provenance.config import Config, load_config
 from hermes_mycelium_provenance.git_ops import show_note
 from hermes_mycelium_provenance.provenance import ProvenanceState
 
@@ -24,6 +25,67 @@ def init_repo(tmp_path: Path) -> Path:
     git(repo, "add", "README.md")
     git(repo, "commit", "-m", "base")
     return repo
+
+
+def test_load_config_reads_yaml_plugin_config_and_env_overrides(tmp_path: Path, monkeypatch) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "plugins:\n"
+        "  mycelium-provenance:\n"
+        "    ledger_root: ~/yaml-ledger\n"
+        "    note_ref: refs/notes/yaml\n"
+        "    write_notes: true\n"
+        "    inject_context: true\n"
+        "    finalize_on_turn: false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(hmp_config, "_hermes_config_path", lambda: cfg_path)
+    monkeypatch.setenv("HMP_WRITE_NOTES", "false")
+
+    cfg = load_config()
+
+    assert str(cfg.ledger_root).endswith("yaml-ledger")
+    assert cfg.note_ref == "refs/notes/yaml"
+    assert cfg.write_notes is False
+    assert cfg.inject_context is True
+    assert cfg.finalize_on_turn is False
+
+
+def test_load_config_reads_list_style_yaml_plugin_config(tmp_path: Path, monkeypatch) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "plugins:\n"
+        "  - mycelium-provenance:\n"
+        "      write_notes: true\n"
+        "      inject_context: false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(hmp_config, "_hermes_config_path", lambda: cfg_path)
+
+    cfg = load_config()
+
+    assert cfg.write_notes is True
+    assert cfg.inject_context is False
+
+
+def test_load_config_rejects_blank_or_wrong_type_yaml_scalars(tmp_path: Path, monkeypatch) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "plugins:\n"
+        "  mycelium-provenance:\n"
+        "    ledger_root:\n"
+        "    note_ref:\n"
+        "    write_notes: false\n",
+        encoding="utf-8",
+    )
+    default_root = tmp_path / "default-ledger"
+    monkeypatch.setattr(hmp_config, "_hermes_config_path", lambda: cfg_path)
+    monkeypatch.setattr(hmp_config, "default_ledger_root", lambda: default_root)
+
+    cfg = load_config()
+
+    assert cfg.ledger_root == default_root
+    assert cfg.note_ref == "refs/notes/mycelium"
 
 
 def test_finalize_writes_commit_note_and_private_ledger(tmp_path: Path, monkeypatch) -> None:
