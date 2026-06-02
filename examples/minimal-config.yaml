@@ -6,4 +6,5 @@ plugins:
 # Optional shell-hook-style env config can be set by your process manager:
 # HMP_LEDGER_ROOT=~/.hermes/mycelium-provenance
 # HMP_NOTES_REF=refs/notes/mycelium
+# HMP_WRITE_NOTES=false
 # HMP_FINALIZE_ON_TURN=true

@@ -52,7 +52,7 @@ Environment variables:
 | `HMP_ENABLED` | `true` | Disable all behavior when false. |
 | `HMP_LEDGER_ROOT` | `~/.hermes/mycelium-provenance` | Private local ledger root. |
 | `HMP_NOTES_REF` | `refs/notes/mycelium` | Git notes ref to use. |
-| `HMP_WRITE_NOTES` | `true` | Write commit notes on finalize. |
+| `HMP_WRITE_NOTES` | `false` | Write commit notes on finalize. Keep disabled until you explicitly want the repo-local notes side effect. |
 | `HMP_INJECT_CONTEXT` | `true` | Inject existing HEAD notes into future turns as advisory context. |
 | `HMP_FINALIZE_ON_TURN` | `true` | Reconcile notes after each completed assistant turn. |
 

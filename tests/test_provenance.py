@@ -29,7 +29,7 @@ def init_repo(tmp_path: Path) -> Path:
 def test_finalize_writes_commit_note_and_private_ledger(tmp_path: Path, monkeypatch) -> None:
     repo = init_repo(tmp_path)
     ledger_root = tmp_path / "ledger"
-    state = ProvenanceState(Config(ledger_root=ledger_root, finalize_on_turn=False))
+    state = ProvenanceState(Config(ledger_root=ledger_root, write_notes=True, finalize_on_turn=False))
 
     state.on_session_start(session_id="sess-1", platform="discord", model="test-model")
     state.post_tool_call(
@@ -64,6 +64,28 @@ def test_finalize_writes_commit_note_and_private_ledger(tmp_path: Path, monkeypa
     ledger_text = (ledger_root / "sessions" / "sess-1.json").read_text(encoding="utf-8")
     assert "please add" not in ledger_text
     assert "private feature" not in ledger_text
+
+
+def test_default_config_records_ledger_without_writing_notes(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+    ledger_root = tmp_path / "ledger"
+    state = ProvenanceState(Config(ledger_root=ledger_root, finalize_on_turn=False))
+
+    state.on_session_start(session_id="sess-default")
+    state.post_tool_call(
+        session_id="sess-default",
+        tool_name="write_file",
+        args={"path": str(repo / "feature.py")},
+        result="{}",
+    )
+    (repo / "feature.py").write_text("print('hi')\n", encoding="utf-8")
+    git(repo, "add", "feature.py")
+    git(repo, "commit", "-m", "add feature")
+    state.finalize(session_id="sess-default")
+
+    head = git(repo, "rev-parse", "HEAD")
+    assert show_note(repo, head, "refs/notes/mycelium") == ""
+    assert (ledger_root / "sessions" / "sess-default.json").exists()
 
 
 def test_pre_llm_injects_existing_head_note(tmp_path: Path, monkeypatch) -> None:
