@@ -1,0 +1,9 @@
+# Example only. Merge into your Hermes profile config deliberately.
+plugins:
+  enabled:
+    - mycelium-provenance
+
+# Optional shell-hook-style env config can be set by your process manager:
+# HMP_LEDGER_ROOT=~/.hermes/mycelium-provenance
+# HMP_NOTES_REF=refs/notes/mycelium
+# HMP_FINALIZE_ON_TURN=true

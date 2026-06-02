@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+
+from hermes_mycelium_provenance.config import Config
+from hermes_mycelium_provenance.git_ops import show_note
+from hermes_mycelium_provenance.provenance import ProvenanceState
+
+
+def git(repo: Path, *args: str) -> str:
+    proc = subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=True)
+    return proc.stdout.strip()
+
+
+def init_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-b", "main")
+    git(repo, "config", "user.name", "Test User")
+    git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "-m", "base")
+    return repo
+
+
+def test_finalize_writes_commit_note_and_private_ledger(tmp_path: Path, monkeypatch) -> None:
+    repo = init_repo(tmp_path)
+    ledger_root = tmp_path / "ledger"
+    state = ProvenanceState(Config(ledger_root=ledger_root, finalize_on_turn=False))
+
+    state.on_session_start(session_id="sess-1", platform="discord", model="test-model")
+    state.post_tool_call(
+        session_id="sess-1",
+        tool_name="write_file",
+        args={"path": str(repo / "feature.py"), "content": "print('hi')\n"},
+        result='{"success": true}',
+    )
+    (repo / "feature.py").write_text("print('hi')\n", encoding="utf-8")
+    git(repo, "add", "feature.py")
+    git(repo, "commit", "-m", "add feature")
+
+    state.post_llm_call(
+        session_id="sess-1",
+        user_message="please add the private feature text",
+        assistant_response="done",
+        platform="discord",
+    )
+    state.finalize(session_id="sess-1", platform="discord")
+
+    head = git(repo, "rev-parse", "HEAD")
+    note = show_note(repo, head, "refs/notes/mycelium")
+    data = json.loads(note)
+    assert data["kind"] == "agent-session-origin"
+    assert data["session_id"] == "sess-1"
+    assert data["agent"]["platform"] == "discord"
+    assert data["safety"]["contains_private_transcript"] is False
+    assert "please add" not in note
+    assert "private feature" not in note
+    assert data["evidence"]["user_message_hashes"][0].startswith("sha256:")
+
+    ledger_text = (ledger_root / "sessions" / "sess-1.json").read_text(encoding="utf-8")
+    assert "please add" not in ledger_text
+    assert "private feature" not in ledger_text
+
+
+def test_pre_llm_injects_existing_head_note(tmp_path: Path, monkeypatch) -> None:
+    repo = init_repo(tmp_path)
+    git(repo, "notes", "--ref=refs/notes/mycelium", "add", "-m", '{"kind":"agent-session-origin","session_id":"prior"}', "HEAD")
+    monkeypatch.chdir(repo)
+    state = ProvenanceState(Config(ledger_root=tmp_path / "ledger", inject_context=True))
+    context = state.pre_llm_call(session_id="sess-2")
+    assert context is not None
+    assert "Repo-local Mycelium/git-notes provenance" in context["context"]
+    assert "prior" in context["context"]
+
+
+def test_observes_git_c_terminal_workdir(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+    state = ProvenanceState(Config(ledger_root=tmp_path / "ledger", write_notes=False))
+    state.on_session_start(session_id="sess-3")
+    state.post_tool_call(
+        session_id="sess-3",
+        tool_name="terminal",
+        args={"command": f"git -C {repo} status"},
+        result="{}",
+    )
+    ledger = state._sessions["sess-3"]
+    assert str(repo) in ledger.repos
+    assert ledger.repos[str(repo)].git_commands == [f"git -C {repo} status"]

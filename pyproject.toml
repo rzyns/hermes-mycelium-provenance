@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hermes-mycelium-provenance"
+version = "0.1.0"
+description = "Hermes Agent plugin for repo-local git-notes/Mycelium session provenance"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Hermes Mycelium Provenance contributors" }]
+requires-python = ">=3.11"
+keywords = ["hermes-agent", "git-notes", "mycelium", "provenance", "agents"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+  "mypy>=1.10",
+  "build>=1.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/rzyns/hermes-mycelium-provenance"
+Repository = "https://github.com/rzyns/hermes-mycelium-provenance"
+Issues = "https://github.com/rzyns/hermes-mycelium-provenance/issues"
+
+[project.entry-points."hermes_agent.plugins"]
+mycelium-provenance = "hermes_mycelium_provenance"
+
+[project.scripts]
+hermes-mycelium-provenance = "hermes_mycelium_provenance.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hermes_mycelium_provenance"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/docs",
+  "/examples",
+  "/.github",
+  "/__init__.py",
+  "/plugin.yaml",
+  "/README.md",
+  "/LICENSE",
+  "/NOTICE",
+  "/CONTRIBUTING.md",
+  "/CODE_OF_CONDUCT.md",
+  "/SECURITY.md",
+  "/CHANGELOG.md",
+  "/pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+explicit_package_bases = true
+mypy_path = "src"
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
