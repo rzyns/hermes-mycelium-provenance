@@ -50,10 +50,10 @@ Environment variables:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `HMP_ENABLED` | `true` | Disable all behavior when false. |
-| `HMP_LEDGER_ROOT` | `~/.hermes/mycelium-provenance` | Private local ledger root. |
+| `HMP_LEDGER_ROOT` | active Hermes home + `mycelium-provenance` | Private local ledger root. Falls back to `~/.hermes/mycelium-provenance` outside Hermes. |
 | `HMP_NOTES_REF` | `refs/notes/mycelium` | Git notes ref to use. |
 | `HMP_WRITE_NOTES` | `false` | Write commit notes on finalize. Keep disabled until you explicitly want the repo-local notes side effect. |
-| `HMP_INJECT_CONTEXT` | `true` | Inject existing HEAD notes into future turns as advisory context. |
+| `HMP_INJECT_CONTEXT` | `false` | Inject sanitized existing HEAD note summaries into future turns as advisory context. |
 | `HMP_FINALIZE_ON_TURN` | `true` | Reconcile notes after each completed assistant turn. |
 
 ## CLI
@@ -100,5 +100,13 @@ pytest
 python -m build
 hermes-mycelium-provenance status
 ```
+
+For a local live-style sandbox test against the real Hermes plugin manager without touching the running gateway or default profile:
+
+```bash
+python scripts/live_sandbox_test.py --hermes-repo ~/.hermes/hermes-agent
+```
+
+The sandbox creates temporary `HERMES_HOME` directories, symlinks this checkout as a user plugin, simulates Hermes hook calls through `hermes_cli.plugins.invoke_hook`, and verifies default no-note behavior, opt-in note writing, private ledger permissions, idempotent finalization, command redaction, and sanitized opt-in note context injection.
 
 Before public publication, run a pre-publication audit including tracked files, git history, and package contents.

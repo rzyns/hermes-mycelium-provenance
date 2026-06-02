@@ -14,5 +14,4 @@ def register(ctx) -> None:
     ctx.register_hook("post_tool_call", _STATE.post_tool_call)
     ctx.register_hook("post_llm_call", _STATE.post_llm_call)
     ctx.register_hook("on_session_finalize", _STATE.finalize)
-    ctx.register_hook("on_session_end", _STATE.finalize)
     ctx.register_hook("on_session_reset", _STATE.finalize)

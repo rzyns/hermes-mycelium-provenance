@@ -3,13 +3,9 @@ version: 0.1.0
 description: Repo-local git-notes/Mycelium provenance for Hermes Agent sessions.
 provides_hooks:
   - on_session_start
+  - pre_llm_call
   - pre_tool_call
   - post_tool_call
   - post_llm_call
   - on_session_finalize
-  - on_session_end
   - on_session_reset
-optional_hooks:
-  - pre_llm_call
-provides_cli:
-  - mycelium-provenance
