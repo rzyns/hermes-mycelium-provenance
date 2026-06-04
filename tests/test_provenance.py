@@ -128,6 +128,51 @@ def test_finalize_writes_commit_note_and_private_ledger(tmp_path: Path, monkeypa
     assert "private feature" not in ledger_text
 
 
+def test_note_body_has_no_absolute_path_leakage(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+    ledger_root = tmp_path / "ledger"
+    state = ProvenanceState(Config(ledger_root=ledger_root, write_notes=True, finalize_on_turn=False))
+
+    state.on_session_start(session_id="sess-abs", platform="cli")
+    state.post_tool_call(
+        session_id="sess-abs",
+        tool_name="write_file",
+        args={"path": str(repo / "a.py"), "content": "a=1"},
+        result='{}',
+    )
+    (repo / "a.py").write_text("a=1", encoding="utf-8")
+    git(repo, "add", "a.py")
+    git(repo, "commit", "-m", "a")
+
+    state.finalize(session_id="sess-abs")
+
+    head = git(repo, "rev-parse", "HEAD")
+    note = show_note(repo, head, "refs/notes/mycelium")
+    data = json.loads(note)
+
+    # No absolute git directory paths in repo section
+    assert "git_common_dir" not in data.get("repo", {})
+    assert "git_dir" not in data.get("repo", {})
+
+    # evidence must reference ledger only by ID, never by absolute path
+    evidence = data.get("evidence", {})
+    assert "session_ledger" not in evidence
+    assert evidence.get("ledger_id") == "sess-abs"
+
+    # No absolute local path anywhere in the note body
+    def _all_strings(obj):
+        if isinstance(obj, str):
+            yield obj
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                yield from _all_strings(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                yield from _all_strings(item)
+
+    absolute_paths = [s for s in _all_strings(data) if s.startswith("/") and "://" not in s]
+    assert not absolute_paths, f"Absolute paths leaked in note: {absolute_paths}"
+
 def test_default_config_records_ledger_without_writing_notes(tmp_path: Path) -> None:
     repo = init_repo(tmp_path)
     ledger_root = tmp_path / "ledger"
