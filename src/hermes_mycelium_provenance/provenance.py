@@ -125,6 +125,7 @@ class ProvenanceState:
         assistant_response: Any = None,
         platform: str = "",
         model: str = "",
+        provider: str = "",
         **_: Any,
     ) -> None:
         if not self.config.enabled or not session_id:
@@ -134,6 +135,8 @@ class ProvenanceState:
             ledger.platform = platform
         if model:
             ledger.model = model
+        if provider:
+            ledger.provider = provider
         if user_message is not None:
             h = content_hash(user_message)
             if h not in ledger.user_message_hashes:

@@ -228,3 +228,37 @@ def test_observes_git_c_terminal_workdir(tmp_path: Path) -> None:
     ledger = state._sessions["sess-3"]
     assert str(repo) in ledger.repos
     assert ledger.repos[str(repo)].git_commands == ["git status"]
+
+
+def test_provider_passed_via_hook_lands_in_ledger(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+    ledger_root = tmp_path / "ledger"
+    state = ProvenanceState(Config(ledger_root=ledger_root, write_notes=False, finalize_on_turn=False))
+
+    # Simulate Hermes on_session_start with provider
+    state.on_session_start(session_id="sess-prov", platform="cli", model="gpt-5", provider="openrouter")
+    state.post_llm_call(
+        session_id="sess-prov",
+        user_message="hi",
+        assistant_response="ok",
+        platform="cli",
+        model="gpt-5",
+        provider="openrouter",
+    )
+
+    ledger = state._sessions["sess-prov"]
+    assert ledger.provider == "openrouter"
+    assert ledger.model == "gpt-5"
+    assert ledger.platform == "cli"
+
+
+def test_provider_backward_compat_with_old_hooks(tmp_path: Path) -> None:
+    """Plugins that already accept **kwargs must not break when provider is added."""
+    ledger_root = tmp_path / "ledger"
+    state = ProvenanceState(Config(ledger_root=ledger_root, write_notes=False, finalize_on_turn=False))
+
+    # Simulate older Hermes without provider kwarg — calls should still work
+    state.on_session_start(session_id="sess-compat", platform="cli")
+    state.post_llm_call(session_id="sess-compat", user_message="m", assistant_response="a")
+    ledger = state._sessions["sess-compat"]
+    assert ledger.provider is None
