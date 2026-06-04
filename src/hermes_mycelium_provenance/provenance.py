@@ -269,17 +269,28 @@ class ProvenanceState:
         )
 
     def _save(self, ledger: SessionLedger) -> bool:
+        import tempfile
+
         path = ledger_path(self.config.ledger_root, ledger.session_id)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             _chmod_private_dir(self.config.ledger_root)
             _chmod_private_dir(path.parent)
-            tmp = path.with_suffix(path.suffix + ".tmp")
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(ledger.to_json())
-            os.chmod(tmp, 0o600)
-            tmp.replace(path)
+            fd, tmp_name = tempfile.mkstemp(
+                suffix=".tmp",
+                prefix=f".{path.name}.",
+                dir=path.parent,
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(ledger.to_json())
+                os.chmod(tmp_name, 0o600)
+                os.replace(tmp_name, path)
+            except Exception:
+                import contextlib
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(tmp_name)
+                raise
             os.chmod(path, 0o600)
             return True
         except Exception as exc:
