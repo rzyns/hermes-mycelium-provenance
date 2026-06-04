@@ -66,7 +66,7 @@ def _hermes_config_path() -> Path:
 def _load_plugin_yaml_config() -> dict[str, Any]:
     """Read optional plugins.mycelium-provenance config from active Hermes home."""
     try:
-        import yaml  # type: ignore[import-untyped]
+        import yaml
     except Exception:
         return {}
     try:

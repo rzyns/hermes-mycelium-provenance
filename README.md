@@ -63,7 +63,15 @@ hermes-mycelium-provenance status
 hermes-mycelium-provenance audit /path/to/repo
 ```
 
-`audit` exits non-zero if local ledgers identify produced commits whose note does not contain that session id.
+`status` reports resolved configuration, ledger counts (total / finalized / bootstrap / actionable), platform/model/provider histograms, unique repo and commit counts, note-write readiness, ledger-root permissions, and any JSON parse errors from unreadable ledger files. It never prints raw prompts, tool args, tool outputs, secrets, or transcript content.
+
+`audit` checks every actionable ledger against a repo's git notes and reports:
+- produced commits that have a note containing the session id,
+- missing notes (commits with no note for that session),
+- duplicate-attribution candidates (multiple ledgers claiming the same commit),
+- ledger parse errors.
+
+It exits non-zero if any missing notes or duplicate candidates are found.
 
 ## Note shape
 
