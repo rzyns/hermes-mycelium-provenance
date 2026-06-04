@@ -231,7 +231,7 @@ def test_observes_git_c_terminal_workdir(tmp_path: Path) -> None:
 
 
 def test_provider_passed_via_hook_lands_in_ledger(tmp_path: Path) -> None:
-    repo = init_repo(tmp_path)
+    init_repo(tmp_path)
     ledger_root = tmp_path / "ledger"
     state = ProvenanceState(Config(ledger_root=ledger_root, write_notes=False, finalize_on_turn=False))
 
@@ -262,3 +262,163 @@ def test_provider_backward_compat_with_old_hooks(tmp_path: Path) -> None:
     state.post_llm_call(session_id="sess-compat", user_message="m", assistant_response="a")
     ledger = state._sessions["sess-compat"]
     assert ledger.provider is None
+
+
+def _init_repo_with_worktree_support(tmp_path: Path) -> Path:
+    """Init a non-bare repo suitable for `git worktree add`."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-b", "main")
+    git(repo, "config", "user.name", "Test User")
+    git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "-m", "base")
+    return repo
+
+
+def test_git_identity_fields_populated_on_discovery(tmp_path: Path) -> None:
+    repo = _init_repo_with_worktree_support(tmp_path)
+    state = ProvenanceState(Config(ledger_root=tmp_path / "ledger", write_notes=False, finalize_on_turn=False))
+    state.on_session_start(session_id="sess-id")
+    state.post_tool_call(
+        session_id="sess-id",
+        tool_name="write_file",
+        args={"path": str(repo / "a.py"), "content": "a=1\n"},
+        result="{}",
+    )
+    ledger = state._sessions["sess-id"]
+    record = ledger.repos[str(repo)]
+    assert record.git_common_dir is not None
+    assert record.git_dir is not None
+    # git_common_dir should point to the .git directory for a normal repo
+    assert (Path(record.git_common_dir) / "config").exists()
+    assert (Path(record.git_dir) / "HEAD").exists()
+
+
+def test_dedupes_commits_across_related_worktrees(tmp_path: Path) -> None:
+    """Two worktrees of the same repo observed in one session must not double-count commits."""
+    repo = _init_repo_with_worktree_support(tmp_path)
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-b", "wt-branch", str(wt))
+
+    ledger_root = tmp_path / "ledger"
+    state = ProvenanceState(Config(ledger_root=ledger_root, write_notes=False, finalize_on_turn=False))
+    state.on_session_start(session_id="sess-wt")
+
+    # Observe both worktrees
+    state.post_tool_call(
+        session_id="sess-wt",
+        tool_name="write_file",
+        args={"path": str(repo / "main.py"), "content": "main\n"},
+        result="{}",
+    )
+    state.post_tool_call(
+        session_id="sess-wt",
+        tool_name="write_file",
+        args={"path": str(wt / "wt.py"), "content": "wt\n"},
+        result="{}",
+    )
+
+    # Make a commit from the main worktree
+    (repo / "main.py").write_text("main\n", encoding="utf-8")
+    git(repo, "add", "main.py")
+    git(repo, "commit", "-m", "add main")
+
+    state.finalize(session_id="sess-wt")
+
+    main_record = state._sessions["sess-wt"].repos[str(repo)]
+    wt_record = state._sessions["sess-wt"].repos[str(wt)]
+
+    # Both records share the same git_common_dir
+    assert main_record.git_common_dir == wt_record.git_common_dir
+
+    # The commit should appear in exactly one of the records (deduped)
+    all_commits = set(main_record.produced_commits) | set(wt_record.produced_commits)
+    total_len = len(main_record.produced_commits) + len(wt_record.produced_commits)
+    assert total_len == len(all_commits), f"commits double-counted: {main_record.produced_commits} + {wt_record.produced_commits}"
+    assert len(all_commits) == 1
+
+
+def test_audit_matches_on_common_dir_not_exact_path(tmp_path: Path, monkeypatch) -> None:
+    """Audit from main repo path must find records created from a worktree path."""
+    repo = _init_repo_with_worktree_support(tmp_path)
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-b", "wt-branch", str(wt))
+
+    ledger_root = tmp_path / "ledger"
+    state = ProvenanceState(Config(ledger_root=ledger_root, write_notes=True, finalize_on_turn=False))
+    state.on_session_start(session_id="sess-audit")
+    state.post_tool_call(
+        session_id="sess-audit",
+        tool_name="write_file",
+        args={"path": str(wt / "a.py"), "content": "a\n"},
+        result="{}",
+    )
+    (wt / "a.py").write_text("a\n", encoding="utf-8")
+    git(wt, "add", "a.py")
+    git(wt, "commit", "-m", "add a")
+    state.finalize(session_id="sess-audit")
+
+    monkeypatch.setenv("HMP_LEDGER_ROOT", str(ledger_root))
+    from hermes_mycelium_provenance.cli import main
+
+    out = json.loads(_capture_stdout(main, ["audit", str(repo)]))
+    assert out["checked"] == 1
+    assert out["missing"] == []
+    assert out["duplicate_candidates"] == []
+    assert out["ok"] is True
+
+
+def test_note_dedup_across_worktrees_same_commit(tmp_path: Path) -> None:
+    """Two worktrees of the same repo: the same commit must not get two notes."""
+    repo = _init_repo_with_worktree_support(tmp_path)
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-b", "wt-branch", str(wt))
+
+    ledger_root = tmp_path / "ledger"
+    state = ProvenanceState(Config(ledger_root=ledger_root, write_notes=True, finalize_on_turn=False))
+    state.on_session_start(session_id="sess-note-dedup")
+
+    # Observe both worktrees
+    state.post_tool_call(
+        session_id="sess-note-dedup",
+        tool_name="write_file",
+        args={"path": str(repo / "main.py"), "content": "main\n"},
+        result="{}",
+    )
+    state.post_tool_call(
+        session_id="sess-note-dedup",
+        tool_name="write_file",
+        args={"path": str(wt / "wt.py"), "content": "wt\n"},
+        result="{}",
+    )
+
+    (repo / "main.py").write_text("main\n", encoding="utf-8")
+    git(repo, "add", "main.py")
+    git(repo, "commit", "-m", "add main")
+
+    state.finalize(session_id="sess-note-dedup")
+
+    # Notes should have been written for exactly one record (the one that
+    # retained the deduplicated commit list), not both.
+    main_record = state._sessions["sess-note-dedup"].repos[str(repo)]
+    wt_record = state._sessions["sess-note-dedup"].repos[str(wt)]
+    notes_total = len(main_record.notes_written) + len(wt_record.notes_written)
+    assert notes_total == 1, f"expected 1 note, got {notes_total}"
+
+
+def _capture_stdout(fn, args: list[str]) -> str:
+    import io
+    import sys
+    old = sys.stdout
+    buf = io.StringIO()
+    sys.stdout = buf
+    try:
+        fn(args)
+    except SystemExit as exc:
+        if exc.code not in (0, None):
+            raise
+    finally:
+        sys.stdout = old
+    return buf.getvalue()

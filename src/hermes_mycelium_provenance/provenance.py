@@ -13,8 +13,11 @@ from .git_ops import (
     commits_between,
     current_head,
     discover_repo,
+    git_common_dir,
+    git_dir,
     has_dirty_worktree,
     parse_git_c_workdir,
+    safe_remote_url,
     show_note,
 )
 from .model import (
@@ -157,6 +160,7 @@ class ProvenanceState:
         ledger = self._sessions.get(session_id) or self._load_or_new(session_id)
         if platform:
             ledger.platform = platform
+        # First pass: compute final state for all observed repos.
         for repo_key, record in list(ledger.repos.items()):
             repo = Path(repo_key)
             try:
@@ -165,16 +169,40 @@ class ProvenanceState:
                 record.branch = branch_name(repo) or record.branch
                 record.dirty_at_finalize = has_dirty_worktree(repo)
                 record.produced_commits = commits_between(repo, record.initial_head, final_head)
-                if self.config.write_notes:
-                    for commit in record.produced_commits:
+            except Exception as exc:  # fail-open: audit can repair later
+                message = f"{repo}: {exc}"
+                logger.warning("mycelium-provenance finalize state-compute failed: %s", message)
+                record.note_errors.append(message)
+                ledger.last_error = message
+        # Second pass: deduplicate produced commits per common Git directory.
+        # Two related worktrees share the same object DB; the same commit must not
+        # be double-counted or double-noted.
+        from collections import defaultdict
+        common_groups: dict[str, list[str]] = defaultdict(list)
+        for repo_key, record in ledger.repos.items():
+            common = record.git_common_dir or repo_key
+            common_groups[common].append(repo_key)
+        for group_repos in common_groups.values():
+            seen_commits: set[str] = set()
+            for rk in group_repos:
+                rec = ledger.repos[rk]
+                unique = [c for c in rec.produced_commits if c not in seen_commits]
+                seen_commits.update(unique)
+                rec.produced_commits = unique
+        # Third pass: write notes for the deduped commit lists.
+        for repo_key, record in list(ledger.repos.items()):
+            repo = Path(repo_key)
+            if self.config.write_notes:
+                for commit in record.produced_commits:
+                    try:
                         body = self._note_body(ledger, record, commit)
                         if append_note(repo, commit, self.config.note_ref, body):
                             record.notes_written.append(commit)
-            except Exception as exc:  # fail-open: audit can repair later
-                message = f"{repo}: {exc}"
-                logger.warning("mycelium-provenance finalize failed: %s", message)
-                record.note_errors.append(message)
-                ledger.last_error = message
+                    except Exception as exc:
+                        message = f"{repo} note for {commit}: {exc}"
+                        logger.warning("mycelium-provenance note write failed: %s", message)
+                        record.note_errors.append(message)
+                        ledger.last_error = message
         ledger.finalized_at = utc_now()
         self._save(ledger)
 
@@ -191,7 +219,14 @@ class ProvenanceState:
                 continue
             record = ledger.repos.get(str(repo))
             if record is None:
-                record = RepoRecord(repo_root=str(repo), initial_head=current_head(repo), branch=branch_name(repo))
+                record = RepoRecord(
+                    repo_root=str(repo),
+                    initial_head=current_head(repo),
+                    branch=branch_name(repo),
+                    git_common_dir=git_common_dir(repo),
+                    git_dir=git_dir(repo),
+                    safe_remote_url=safe_remote_url(repo),
+                )
                 ledger.repos[str(repo)] = record
             if tool_name in _WRITE_TOOLS | _READ_TOOLS:
                 maybe_path = args.get("path") or args.get("file_path")
@@ -240,6 +275,9 @@ class ProvenanceState:
                 "base_commit": record.initial_head,
                 "produced_commit": commit,
                 "dirty_at_finalize": record.dirty_at_finalize,
+                "git_common_dir": record.git_common_dir,
+                "git_dir": record.git_dir,
+                "safe_remote_url": record.safe_remote_url,
             },
             "touched_paths": record.touched_paths[: self.config.max_paths_per_note],
             "git_commands_observed": len(record.git_commands),

@@ -11,6 +11,7 @@ from .git_ops import (
     GitError,
     commits_between,
     current_head,
+    git_common_dir,
     show_note,
 )
 from .model import SessionLedger
@@ -76,7 +77,7 @@ def _status() -> int:
     finalized = 0
     bootstrap = 0
     actionable = 0
-    repos_seen: set[str] = set()
+    common_dirs_seen: set[str] = set()
     total_commits = 0
     total_notes_written = 0
     total_errors = 0
@@ -95,7 +96,7 @@ def _status() -> int:
         if ledger.provider:
             providers[ledger.provider] += 1
         for repo_key, record in ledger.repos.items():
-            repos_seen.add(repo_key)
+            common_dirs_seen.add(record.git_common_dir or repo_key)
             total_commits += len(record.produced_commits)
             total_notes_written += len(record.notes_written)
             total_errors += len(record.note_errors)
@@ -126,7 +127,7 @@ def _status() -> int:
             "platforms": dict(platforms),
             "models": dict(models),
             "providers": dict(providers),
-            "unique_repos": len(repos_seen),
+            "unique_repos": len(common_dirs_seen),
             "total_produced_commits": total_commits,
             "total_notes_written": total_notes_written,
             "total_note_errors": total_errors,
@@ -146,12 +147,22 @@ def _audit(repo: Path) -> int:
     duplicate_candidates: list[dict[str, object]] = []
     missing: list[dict[str, object]] = []
 
+    # Resolve the common-dir for the target repo so worktree-path mismatches
+    # do not hide records that actually belong to the same underlying repo.
+    target_common = git_common_dir(repo) or str(repo)
+
     for ledger in ledgers:
-        record = ledger.repos.get(str(repo))
-        if not record:
+        # Match on common-dir identity, not exact repo_root string.
+        matching_record = None
+        for repo_key, record in ledger.repos.items():
+            record_common = record.git_common_dir or repo_key
+            if record_common == target_common:
+                matching_record = record
+                break
+        if not matching_record:
             continue
         final = current_head(repo)
-        produced = record.produced_commits or commits_between(repo, record.initial_head, final)
+        produced = matching_record.produced_commits or commits_between(repo, matching_record.initial_head, final)
         for commit in produced:
             try:
                 note_text = show_note(repo, commit, cfg.note_ref)
@@ -167,7 +178,8 @@ def _audit(repo: Path) -> int:
             if not has_session:
                 missing.append(entry)
 
-    # Duplicate-attribution candidates: multiple ledgers claim the same commit.
+    # Duplicate-attribution candidates: multiple ledgers claim the same commit
+    # within the same common Git directory (i.e., same underlying repo).
     by_commit: dict[str, list[str]] = {}
     for f in findings:
         commit = str(f["commit"])

@@ -15,6 +15,9 @@ class RepoRecord:
     initial_head: str | None = None
     final_head: str | None = None
     branch: str | None = None
+    git_common_dir: str | None = None
+    git_dir: str | None = None
+    safe_remote_url: str | None = None
     touched_paths: list[str] = field(default_factory=list)
     git_commands: list[str] = field(default_factory=list)
     produced_commits: list[str] = field(default_factory=list)

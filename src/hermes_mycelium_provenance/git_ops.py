@@ -82,6 +82,54 @@ def has_dirty_worktree(repo: Path) -> bool:
     return bool(proc.stdout.strip()) if proc.returncode == 0 else False
 
 
+def git_common_dir(repo: Path) -> str | None:
+    proc = run_git(repo, ["rev-parse", "--git-common-dir"], check=False)
+    value = proc.stdout.strip() if proc.returncode == 0 else ""
+    # "--git-common-dir" can return a relative path when inside the main worktree.
+    if not value:
+        return None
+    p = Path(value)
+    if not p.is_absolute():
+        p = (repo / p).resolve()
+    return str(p)
+
+
+def git_dir(repo: Path) -> str | None:
+    proc = run_git(repo, ["rev-parse", "--git-dir"], check=False)
+    value = proc.stdout.strip() if proc.returncode == 0 else ""
+    if not value:
+        return None
+    p = Path(value)
+    if not p.is_absolute():
+        p = (repo / p).resolve()
+    return str(p)
+
+
+def safe_remote_url(repo: Path) -> str | None:
+    """Return a safe remote URL if exactly one named remote exists."""
+    proc = run_git(repo, ["remote"], check=False)
+    if proc.returncode != 0:
+        return None
+    names = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if len(names) != 1:
+        return None
+    proc = run_git(repo, ["remote", "get-url", names[0]], check=False)
+    if proc.returncode != 0:
+        return None
+    url = proc.stdout.strip()
+    if not url:
+        return None
+    # Strip credentials from URLs like https://user:pass@host/...
+    if url.startswith("http://") or url.startswith("https://"):
+        from urllib.parse import urlparse, urlunparse
+        parsed = urlparse(url)
+        # Rebuild without netloc credentials
+        clean = urlunparse(parsed._replace(netloc=parsed.hostname or parsed.netloc))
+        return clean
+    # For SSH-style, return as-is (no embedded password in standard Git SSH URLs)
+    return url
+
+
 def note_ref_arg(note_ref: str) -> str:
     return f"--ref={note_ref}"
 
