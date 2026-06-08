@@ -144,7 +144,7 @@ def main() -> int:
                 paths = sorted({
                     p.strip() for p in paths_result.stdout.strip().splitlines() if p.strip()
                 })
-                if any(path_is_allowed(p) for p in paths):
+                if paths and all(path_is_allowed(p) for p in paths):
                     continue
                 findings.append(
                     {
