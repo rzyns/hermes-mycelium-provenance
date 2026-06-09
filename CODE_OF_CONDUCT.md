@@ -33,7 +33,7 @@ This Code of Conduct applies within all project spaces (repository, issue tracke
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainer through the repository owner's preferred private contact channel. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to the project maintainer at `janusz@forserial.org`. Do not include sensitive personal information in public GitHub issues or discussions. All complaints will be reviewed and investigated promptly and fairly.
 
 Project maintainers are obligated to respect the privacy and security of the reporter of any incident.
 

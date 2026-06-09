@@ -4,7 +4,9 @@
 
 Please **do not file public issues** containing secrets, exploit payloads, or sensitive transcript content.
 
-Until GitHub Security Advisories are enabled for the public repository, report suspected vulnerabilities privately to the maintainer through the repository owner's preferred private contact channel.
+Report suspected vulnerabilities privately to the maintainer at `janusz@forserial.org`. Do not include exploit details, secrets, or sensitive transcript content in public GitHub issues or discussions.
+
+If GitHub private vulnerability reporting is enabled for this repository, you may also use the repository's **Security** / **Report a vulnerability** flow. Email remains the fallback private contact route.
 
 Include:
 - a description of the issue and its impact;
@@ -14,7 +16,7 @@ Include:
 
 ## Disclosure timeline
 
-We aim to acknowledge receipt within 5 business days and provide an initial assessment within 10 business days. Coordinated disclosure timing will be agreed with the reporter before public fix release.
+For this experimental alpha project, we aim to acknowledge receipt within 5 business days and provide an initial assessment within 10 business days when maintainer capacity allows. Coordinated disclosure timing will be agreed with the reporter before public fix release.
 
 ## Supported versions
 
