@@ -1,5 +1,5 @@
 name: mycelium-provenance
-version: 0.1.0
+version: 0.1.1
 description: Repo-local git-notes/Mycelium provenance for Hermes Agent sessions.
 provides_hooks:
   - on_session_start
